@@ -4,6 +4,7 @@ NMTS with Attention
 @author: vasudevgupta
 """
 import tensorflow as tf
+import os
 
 class Encoder(tf.keras.Model):
     """
@@ -28,6 +29,7 @@ class Encoder(tf.keras.Model):
                                        return_sequences= True, return_state= True)
     
     def call(self, input_seq):
+        # shape= (batch_size, max_length_encoder_input)
         x= self.embed(input_seq)
         # shape= (batch_size, max_length_encoder_input, embed_dims)
         output_seq1, hidden1= self.gru1(x)
@@ -117,7 +119,7 @@ def loss(y, ypred, sce):
     loss_= mask*loss_
     return tf.reduce_mean(loss_)
 
-# @tf.function
+@tf.function
 def train_step(params, x, ger_inp, ger_out, encoder, decoder, sce):
     with tf.GradientTape() as gtape:
         tot_loss= 0
@@ -131,3 +133,18 @@ def train_step(params, x, ger_inp, ger_out, encoder, decoder, sce):
     grads= gtape.gradient(avg_timestep_loss, encoder.trainable_variables + decoder.trainable_variables)
     params.optimizer.apply_gradients(zip(grads, encoder.trainable_variables + decoder.trainable_variables))
     return grads, avg_timestep_loss
+
+def save_checkpoints(params, encoder, decoder):
+    checkpoint_dir = 'weights'
+    checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
+    ckpt= tf.train.Checkpoint(optimizer= params.optimizer,
+                              encoder= encoder,
+                              decoder= decoder)
+    ckpt.save(file_prefix= checkpoint_prefix)
+        
+def restore_checkpoint(params, encoder, decoder):
+    checkpoint_dir = 'weights'
+    ckpt= tf.train.Checkpoint(optimizer= params.optimizer,
+                              encoder= encoder,
+                              decoder= decoder)
+    ckpt.restore(tf.train.latest_checkpoint(checkpoint_dir))

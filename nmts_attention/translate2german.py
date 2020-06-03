@@ -7,7 +7,7 @@ import pandas as pd
 import tensorflow as tf
 
 from prepare_data import tokenizer
-from model import Encoder, Decoder
+from model import Encoder, Decoder, restore_checkpoint
 from params import params
 
 import spacy
@@ -35,13 +35,11 @@ def make_prediction(txt, params, greedy= False, random_sampling= True, beam_sear
     txt= contractions.fix(txt)
     x= tf.expand_dims(tf.constant([tokenize_eng[tok.text.lower()] for tok in nlp(txt)]), 0)
     encoder= Encoder(params)
-#    encoder.load_weights('weights/enc.ckpt')
     decoder= Decoder(params)
-#    decoder.load_weights('weights/dec.ckpt')
+    restore_checkpoint(params, encoder, decoder)
     dec_inp= tf.reshape(tokenize_ger['<sos>'], (1,1))
-    final_tok= '<sos>'
+    final_tok, i= '<sos>', 0
     sent, att= [], []
-    i= 0
     enc_seq, hidden1, hidden2= encoder(x)
     while final_tok != '<eos>':
         ypred, hidden1, hidden2, attention_weights= decoder(enc_seq, dec_inp, hidden1, hidden2)
@@ -54,9 +52,10 @@ def make_prediction(txt, params, greedy= False, random_sampling= True, beam_sear
         sent.append(detokenize_ger[tf.squeeze(idx).numpy()])
         att.append(attention_weights)
         dec_inp= idx # teacher forcing with predicted output
-        i+=1
         if i== 10:
             break
+        else:
+            i+=1
     return " ".join(sent), att
 
 txt= input('Type anything: ')

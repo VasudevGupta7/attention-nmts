@@ -293,53 +293,76 @@ def restore_checkpoint(params, transformer):
                               transformer= transformer)
     ckpt.restore(tf.train.latest_checkpoint(checkpoint_dir))
 
-#-----------------------------------------------------------------------------#
-############ CODE SNIPPET FOR DEBUGGING LATER, IF ISSUES HAPPEN ###############
-# x= tf.ones((32, 4))*0.001
-# out, ls= train_step(x, x, x)
-
-# angle= lambda posn, i: posn*(1/ tf.math.pow(10000, (2*i)/ dmodel))
-# i= np.arange(dmodel)[0::2]
-# posn= np.arange(l)
-# emb_seq[:, 0::2]= [angle(j, i) for j in posn]
-
-# imp= InputEmbedding(256, 1000)
-# emb_seq= np.ones((6, 7))
-# emb_seq= tf.convert_to_tensor(emb_seq, dtype= tf.float32)
-# imp(emb_seq)
-# imp.position_embed(emb_seq)
+class BeamSearch:
     
-# x= tf.ones((32, 4,256))
-# ml= MultiheadAttention(256, 4)
-# seq= ml(x,x,x)
-# ml.multi_head_split(x).shape
-
-# ffn= FeedForwardLayer(256)       
-# seq= np.ones((32, 7, 256))
-# seq= tf.convert_to_tensor(seq, dtype= tf.float32)
-
-# el= EncoderLayer(4, 64, 256)
-# x= tf.ones((32, 10, 256))
-# out= el(x)
-    
-# enc= Encoder(4, 256, 64, 4,1000)
-# x= tf.ones((32, 10))
-# out= enc(x)
-
-# dec= DecoderLayer(256, 4, 64)
-# x= tf.ones((32, 5, 256))
-# y= tf.ones((32, 10, 256))
-# out= dec(y, x)
-
-# dec= Decoder(4, 256, 64, 4, 1000)
-# x= tf.ones((32, 10))
-# out= dec(x, tf.ones((32, 10, 256)))
+    def __init__(self, k, model):
+        """
+        k- beam search width
+        model- decoding model
+        """
+        self.k= k
+        self.model= model
+        self.args= [list() for i in range(k)]
+         
+    def first_step(self, logits):
+        """
+        logits- (seqlen=1, target_vocab_size)
+        """
+        probs= tf.nn.softmax(logits, axis= -1)
+        topk_probs= tf.math.top_k(probs, self.k)[0].numpy()
         
-# tr= Transformer(4, 256, 64, 4, 10000, 10000)
-# x= tf.ones((32, 10))
-# y= tf.ones((32, 4))
-# out= tr(x, y)
+        topk_args= np.squeeze(tf.math.top_k(probs, self.k)[1].numpy())
+        _= [self.args[i].append(topk_args[i]) for i in range(self.k)]
+        dec_input= np.array(self.args)
+        return dec_input, topk_probs
 
-# y= tf.ones((32, 4))
-# ypred= tf.ones((32, 4, 10000))
-#-----------------------------------------------------------------------------#
+    def multisteps(self, enc_input, dec_input, topk_probs):
+        """
+        enc_input- (1, enc_seqlen)
+        dec_input- (k, seqlen)
+        topk_prob- (1, seqlen)
+        """
+        probs= tf.nn.softmax(self.model(enc_input, dec_input)[:, -1, :])
+        # (k, seqlen, tar_vocab_size)
+        marginal_probs= np.reshape(topk_probs, (self.k, 1))*probs
+        reshaped_marg_probs= marginal_probs.numpy().reshape(1,-1)
+        
+        topk_probs= tf.math.top_k(reshaped_marg_probs, self.k)[0].numpy()
+        
+        topk_args= tf.math.top_k(reshaped_marg_probs, self.k)[1].numpy()
+        topk_args= self.reindex(topk_args[0], params.tar_vocab_size)
+        
+        _= [self.args[i].append(topk_args[i]) for i in range(self.k)]
+        return np.array(self.args), topk_probs
+        
+    def call(self, enc_input, logits, tar_maxlen):
+        """
+        enc_input- (1, enc_seqlen)
+        logits- (seqlen=1, target_vocab_size)
+        tar_maxlen- int (maxlen of seq to be outputed)
+        """
+        dec_input, topk_probs= self.first_step(logits)
+        for i in range(tar_maxlen-1):
+            dec_input, topk_probs= self.multisteps(enc_input, dec_input, topk_probs)
+        return dec_input
+            
+    def reindex(self, topk_args, tar_vocab_size):
+        """
+        topk_args- 1D array/ list
+        tar_vocab_size- int (vocab size for target language)
+        """
+        ls= []
+        for i in range(self.k):
+            if topk_args[i] < tar_vocab_size: 
+                a= topk_args[i] 
+                ls.append(a)
+                continue
+            else:
+                while True:
+                    a= topk_args[i]-params.tar_vocab_size
+                    if a<0:
+                        a= topk_args[i]
+                        break
+                    topk_args[i]= a
+                ls.append(a)
+        return ls

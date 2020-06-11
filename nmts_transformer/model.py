@@ -15,7 +15,7 @@ CLASSES/ FUNCTION AVAILABLE IN THIS FILE
     - TRANSFORMER
     - LOSS_FN
     - TRAIN_STEP
-    - LEARNING_RATE
+    - SAVE & RESTORE CHECKPOINTS
 
 @author: vasudevgupta
 """
@@ -40,13 +40,13 @@ class InputEmbedding(tf.keras.layers.Layer):
         
     def position_embedding(self, emb_seq):
         # emb_seq- (batch_size, seqlen, emb_dims)
-        emb_seq= emb_seq.numpy()
-        l= emb_seq.shape[-2]
-        angle= lambda posn, i: posn*(1/ tf.math.pow(10000, (2*i)/ self.dmodel))
-        emb_seq[:, :, 0::2]= [np.sin(angle(j, np.arange(self.dmodel)[0::2])) for j in np.arange(l)]
-        emb_seq[:, :, 1::2]= [np.cos(angle(j, np.arange(self.dmodel)[1::2])) for j in np.arange(l)]
+        pos_emb_seq= np.empty(shape= (emb_seq.shape))
+        l= pos_emb_seq.shape[-2]
+        angle= lambda posn, i: posn*(1/ np.power(10000, (2*i)/ self.dmodel))
+        pos_emb_seq[:, :, 0::2]= [np.sin(angle(j, np.arange(self.dmodel)[0::2])) for j in np.arange(l)]
+        pos_emb_seq[:, :, 1::2]= [np.cos(angle(j, np.arange(self.dmodel)[1::2])) for j in np.arange(l)]
         # emb_seq- (batch_size, seqlen, emb_dims)
-        return tf.convert_to_tensor(emb_seq)
+        return tf.convert_to_tensor(pos_emb_seq, dtype= tf.float32)
         
     def call(self, seq):
         # seq- (batch_size, seqlen)
@@ -82,9 +82,12 @@ class MultiheadAttention(tf.keras.layers.Layer):
         scores= tf.matmul(Q, K, transpose_b= True)
         # scores- (batch_size, num_heads, Qseqlen, Kseq_len); axis= -1 apply softmax
         scaled_scores= scores/ tf.math.sqrt(tf.cast(self.depth, tf.float32))
+        # scaled_scores- (batch_size, num_heads, Qseqlen, Kseq_len)
+        
         if mask is not None:
             scaled_scores += mask*(-1e9)
         # scaled_scores- (batch_size, num_heads, Qseqlen, Kseq_len)
+        
         attention_weights= tf.nn.softmax(scaled_scores, axis= -1)
         # attention_weights- (batch_size, num_heads, Qseqlen, Kseqlen)
         values_weighted_sum= tf.matmul(attention_weights, V)
@@ -187,10 +190,6 @@ class Encoder(tf.keras.layers.Layer):
             x= enc_block(x, padding_mask= mask)
         # x- (batch_size, seqlen, dmodel)
         return x
-   
-"""
-MASKING IS LEFT IN ENCODER, DECODER
-"""     
 
 class DecoderLayer(tf.keras.layers.Layer):
     
@@ -249,15 +248,26 @@ class Transformer(tf.keras.Model):
         self.decoder= Decoder(num_blocks, dmodel, depth, num_heads, tar_vocab_size)
         self.linear= tf.keras.layers.Dense(tar_vocab_size)
         
-    def call(self, enc_input, dec_input, enc_padding_mask= None, dec_padding_mask= None, dec_seq_mask= None):
+    def call(self, enc_input, dec_input, enc_padding_mask= None, enc_dec_padding_mask= None, dec_seq_mask= None):
         enc_output= self.encoder(enc_input, mask= enc_padding_mask)
         # x- (batch_size, enc_seqlen, dmodel)
-        x= self.decoder(dec_input, enc_output, padding_mask= dec_padding_mask, seq_mask= dec_seq_mask)
+        x= self.decoder(dec_input, enc_output, padding_mask= enc_dec_padding_mask, seq_mask= dec_seq_mask)
         # x- (batch_size, tar_seqlen, dmodel)
         x= self.linear(x)
         # x- (batch_size, tar_seqlen, tar_vocab_size)
         return x
 
+def create_padding_mask(kseq):
+    # (batch_size, key_seqlen)
+    mat= tf.cast(tf.math.equal(kseq, 0), tf.float32)
+    return mat[:, tf.newaxis, tf.newaxis, :] #(batch_size, 1, 1, key_seqlen)
+
+def unidirectional_input_mask(enc_input, dec_input):
+    matrix= tf.ones((dec_input.shape[-1], enc_input.shape[-1]))
+    lower_triang_mat= tf.linalg.band_part(matrix, -1, 0)
+    # (dec_seqlen, enc_seqlen)
+    return tf.cast(tf.math.equal(lower_triang_mat, 0), tf.float32)
+    
 def loss_fn(y, ypred, sce):
     loss_= sce(y, ypred)
     # loss_- (batch_size, seqlen)
@@ -266,19 +276,19 @@ def loss_fn(y, ypred, sce):
     loss_ = mask*loss_
     return tf.reduce_mean(tf.reduce_mean(loss_, axis= 1))
 
-# @tf.function(input_signature= [
-#     tf.TensorSpec(shape= (None, None), dtype= tf.int64),
-#     tf.TensorSpec(shape= (None, None), dtype= tf.int64), 
-#     tf.TensorSpec(shape= (None, None), dtype= tf.int64)
-#                   )]
-def train_step(enc_input, dec_input, dec_output,
-               transformer, sce):       
+@tf.function
+def train_step(enc_input, dec_input, dec_output, transformer, sce):       
+    # create appropriate mask
+    enc_padding_mask= create_padding_mask(enc_input)
+    enc_dec_padding_mask= create_padding_mask(enc_input)
+    dec_seq_mask= unidirectional_input_mask(enc_input, dec_input)
+    
     with tf.GradientTape() as gtape:
-        ypred= transformer(enc_input, dec_input, enc_padding_mask= None, dec_padding_mask= None, dec_seq_mask= None)
+        ypred= transformer(enc_input, dec_input, enc_padding_mask, enc_dec_padding_mask, dec_seq_mask)
         loss= loss_fn(dec_output, ypred, sce)
     grads= gtape.gradient(loss, transformer.trainable_variables)
     params.optimizer.apply_gradients(zip(grads, transformer.trainable_variables))
-    return grads, loss.numpy()
+    return grads, loss
 
 def save_checkpoints(params, transformer):
     checkpoint_dir = 'weights'
@@ -292,77 +302,3 @@ def restore_checkpoint(params, transformer):
     ckpt= tf.train.Checkpoint(optimizer= params.optimizer,
                               transformer= transformer)
     ckpt.restore(tf.train.latest_checkpoint(checkpoint_dir))
-
-class BeamSearch:
-    
-    def __init__(self, k, model):
-        """
-        k- beam search width
-        model- decoding model
-        """
-        self.k= k
-        self.model= model
-        self.args= [list() for i in range(k)]
-         
-    def first_step(self, logits):
-        """
-        logits- (seqlen=1, target_vocab_size)
-        """
-        probs= tf.nn.softmax(logits, axis= -1)
-        topk_probs= tf.math.top_k(probs, self.k)[0].numpy()
-        
-        topk_args= np.squeeze(tf.math.top_k(probs, self.k)[1].numpy())
-        _= [self.args[i].append(topk_args[i]) for i in range(self.k)]
-        dec_input= np.array(self.args)
-        return dec_input, topk_probs
-
-    def multisteps(self, enc_input, dec_input, topk_probs):
-        """
-        enc_input- (1, enc_seqlen)
-        dec_input- (k, seqlen)
-        topk_prob- (1, seqlen)
-        """
-        probs= tf.nn.softmax(self.model(enc_input, dec_input)[:, -1, :])
-        # (k, seqlen, tar_vocab_size)
-        marginal_probs= np.reshape(topk_probs, (self.k, 1))*probs
-        reshaped_marg_probs= marginal_probs.numpy().reshape(1,-1)
-        
-        topk_probs= tf.math.top_k(reshaped_marg_probs, self.k)[0].numpy()
-        
-        topk_args= tf.math.top_k(reshaped_marg_probs, self.k)[1].numpy()
-        topk_args= self.reindex(topk_args[0], params.tar_vocab_size)
-        
-        _= [self.args[i].append(topk_args[i]) for i in range(self.k)]
-        return np.array(self.args), topk_probs
-        
-    def call(self, enc_input, logits, tar_maxlen):
-        """
-        enc_input- (1, enc_seqlen)
-        logits- (seqlen=1, target_vocab_size)
-        tar_maxlen- int (maxlen of seq to be outputed)
-        """
-        dec_input, topk_probs= self.first_step(logits)
-        for i in range(tar_maxlen-1):
-            dec_input, topk_probs= self.multisteps(enc_input, dec_input, topk_probs)
-        return dec_input
-            
-    def reindex(self, topk_args, tar_vocab_size):
-        """
-        topk_args- 1D array/ list
-        tar_vocab_size- int (vocab size for target language)
-        """
-        ls= []
-        for i in range(self.k):
-            if topk_args[i] < tar_vocab_size: 
-                a= topk_args[i] 
-                ls.append(a)
-                continue
-            else:
-                while True:
-                    a= topk_args[i]-params.tar_vocab_size
-                    if a<0:
-                        a= topk_args[i]
-                        break
-                    topk_args[i]= a
-                ls.append(a)
-        return ls

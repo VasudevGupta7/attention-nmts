@@ -11,6 +11,7 @@ os.chdir('/Users/vasudevgupta/Desktop/GitHub/seq2seq/nmts_transformer')
 class params:
     pass
 
+# scheduling learning rate as per given in paper
 class LearningRate(tf.keras.optimizers.schedules.LearningRateSchedule):
     """
     SCHEDULING THE LEARNING RATE AS PER GIVEN IN PAPER
@@ -30,11 +31,14 @@ params.num_blocks= 4
 params.dmodel= 256
 params.num_heads= 4
 params.depth= params.dmodel/params.num_heads
-params.inp_vocab_size= 5776
-params.tar_vocab_size= 8960
-params.ger_max_len= 17
-params.eng_max_len= 20
-params.batch_size= 64
+params.batch_size= 32
 params.learning_rate= LearningRate(params.dmodel, params.warmup_steps)
 params.optimizer= tf.keras.optimizers.Adam(params.learning_rate)
-params.epochs= 10
+params.epochs= 20
+params.k = 5 # beam width
+
+# don't tune it now
+params.eng_vocab = 5776 # got this after tokenizing dataset- english
+params.ger_vocab = 8960 # got this after tokenizing dataset- german
+params.dec_max_len= 17
+params.en_max_len= 20

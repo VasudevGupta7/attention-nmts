@@ -3,7 +3,7 @@ Implementing the seq2seq model with different approaches. I am using spacy for n
 
 ## Goal
 - [x] [Building NMTS using seq2seq architecture with Luong Attention](/nmts_attention)
-- [ ] [Fully Attention based MT model](/nmts_transformer)
+- [x] [Fully Attention based MT model](/nmts_transformer)
 
 ## Getting Started
 Install tensorflow2 using following command:<br>

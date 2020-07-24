@@ -72,10 +72,10 @@ if __name__ == '__main__':
         
         encoder= Encoder(config)
         decoder= Decoder(config)
-        model= TrainerRNNAttention(encoder, decoder, config)
+        trainer= TrainerRNNAttention(encoder, decoder, config)
         
         ## TRAINING TIME
-        grads, avg_loss= model.train(inputs, save_model= args.save_model, 
+        grads, avg_loss= trainer.train(inputs, save_model= args.save_model, 
                                      load_model= args.load_model, 
                                      save_evry_ckpt= args.save_evry_ckpt)
         
@@ -90,8 +90,10 @@ if __name__ == '__main__':
                          num_heads= config['num_heads'],inp_vocab_size= config['eng_vocab'], 
                          tar_vocab_size= config['ger_vocab'])
         
+        trainer= TrainerTransformer(transformer, config)
+        
         # restore_checkpoint(params, transformer)
-        grads, avg_loss= model.train(inputs, save_model= args.save_model, 
+        grads, avg_loss= trainer.train(inputs, save_model= args.save_model, 
                                      load_model= args.load_model, 
                                      save_evry_ckpt= args.save_evry_ckpt)
         

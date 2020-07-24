@@ -1,19 +1,30 @@
-# Seq2Seq- TensorFlow2
-Implementing the seq2seq model with different approaches. I am using spacy for nlp tasks and tensorflow2 for this model implementation
+# Seq2Seq
+Implemented the seq2seq model with different approaches. 
 
-## Goal
-- [x] [Building NMTS using seq2seq architecture with Luong Attention](/nmts_attention)
-- [x] [Fully Attention based MT model](/nmts_transformer)
+# Goal
+- [x] [Building NMTS using seq2seq architecture with Luong Attention](rnn_attention.py)
+- [x] [Fully Attention based MT model](transformers.py)
 
-## Getting Started
-Install tensorflow2 using following command:<br>
-`pip install tensorflow`<br>
+# Model Architectures
+## 1) Neural Machine Translation System with Attention
+Implemented the seq2seq model with Luong attention for building NMTS <br>
+<img src="assets/rnn_model.png" width="700" height="400"/> <br>
 
-To get started with nlp tasks, install spacy along with models for english and german by running the following commands:<br>
-`pip install spacy`<br>
-`python -m spacy download en_core_web_sm`<br>
-`python -m spacy download de_core_news_sm`<br>
+## 2) Neural Machine Translation System using Transformer
+Implemented the Transformer for building NMTS <br>
+<img src="assets/transformers_model.png" width="700" height="400"/> <br>
 
-For more details, refer this:
-- [TensorFlow docs](https://www.tensorflow.org/install/pip)
-- [spaCy docs](https://spacy.io/usage)
+# Running this Project
+**Clone this project using**: <br>
+`git clone https://github.com/VasudevGupta7/seq2seq.git`<br>
+**Run this script to install all the dependencies**: <br>
+`sh script.sh`<br>
+**To train the model, run the following command**:<br>
+`python3 main.py`<br>
+**To translate english to german execute the following command**:<br>
+`python3 translate2ger.py`<br>
+
+# References
+- [Sequence to Sequence Learning with Neural Networks](https://arxiv.org/abs/1409.3215)
+- [Effective Approaches to Attention-based Neural Machine Translation](https://arxiv.org/abs/1508.04025)
+- [Attention Is All You Need](https://arxiv.org/abs/1706.03762)

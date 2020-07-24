@@ -24,9 +24,6 @@ import tensorflow as tf
 import numpy as np
 
 import os
-os.chdir('/Users/vasudevgupta/Desktop/GitHub/seq2seq/nmts_transformer')
-
-from params import params
 
 class InputEmbedding(tf.keras.layers.Layer):
     """
@@ -268,7 +265,7 @@ def unidirectional_input_mask(enc_input, dec_input):
     # (dec_seqlen, enc_seqlen)
     return tf.cast(tf.math.equal(lower_triang_mat, 0), tf.float32)
     
-def loss_fn(y, ypred, sce):
+def transformer_loss_fn(y, ypred, sce):
     loss_= sce(y, ypred)
     # loss_- (batch_size, seqlen)
     mask= tf.cast(tf.math.not_equal(y, 0), tf.float32)
@@ -277,7 +274,7 @@ def loss_fn(y, ypred, sce):
     return tf.reduce_mean(tf.reduce_mean(loss_, axis= 1))
 
 @tf.function
-def train_step(enc_input, dec_input, dec_output, transformer, sce):       
+def transformer_train_step(enc_input, dec_input, dec_output, transformer, sce):       
     # create appropriate mask
     enc_padding_mask= create_padding_mask(enc_input)
     enc_dec_padding_mask= create_padding_mask(enc_input)

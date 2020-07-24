@@ -3,38 +3,31 @@ PARAMS USED FOR TRAINING TRANSFORMER
 
 @author: vasudevgupta
 """
-
-rnn_attention:
-    batch_size: 64
-    embed_size: 300
-    gru_units: 128
-    learning_rate: .001
-    optimizer: 'rmsprop' #tf.keras.optimizers.RMSprop(params.learning_rate, clipvalue= 1)
-    epochs: 400
-    
+dataloader:
     # don't tune it now
     num_samples: 15000 ## taking only 25000 samples for training purposes
     eng_vocab: 5776 # got this after tokenizing dataset- english
     ger_vocab: 8960 # got this after tokenizing dataset- german
     dec_max_len: 17
     en_max_len: 20
-    # dec_max_len: 
+
+rnn_attention:
+    batch_size: 64
+    learning_rate: .001
+    optimizer: 'rmsprop' #tf.keras.optimizers.RMSprop(params.learning_rate, clipvalue= 1)
+    epochs: 400
+    
+    embed_size: 300
+    gru_units: 128
 
 transformers:
     warmup_steps: 4000
+    optimizer: 'adam'    # tf.keras.optimizers.Adam(params.learning_rate)
+    # learning_rate: LearningRate(params.dmodel, params.warmup_steps)
+    epochs: 20
+    
+    k: 5 # beam width
     num_blocks: 4
     dmodel: 256
     num_heads: 4
-    # depth: dmodel/params.num_heads
-    batch_size: 64
-    # learning_rate: LearningRate(params.dmodel, params.warmup_steps)
-    optimizer: 'adam'    # tf.keras.optimizers.Adam(params.learning_rate)
-    epochs: 20
-    k: 5 # beam width
-    
-    # don't tune it now
-    eng_vocab: 5776 # got this after tokenizing dataset- english
-    ger_vocab: 8960 # got this after tokenizing dataset- german
-    dec_max_len: 17
-    en_max_len: 20
 

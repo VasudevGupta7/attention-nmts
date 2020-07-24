@@ -107,7 +107,7 @@ class Decoder(tf.keras.Model):
         # y- (batch_size, 1, ger_vocab)
         return y, hidden1, hidden2, attention_weights
 
-def loss(y, ypred, sce):
+def rnn_loss(y, ypred, sce):
     """
     EVERYTHING IS PER TIMESTEP FOR DECODER
     TO AVOID PADDING EFFECT IN CALC OF LOSS;
@@ -120,7 +120,7 @@ def loss(y, ypred, sce):
     return tf.reduce_mean(loss_)
 
 @tf.function
-def train_step(params, x, ger_inp, ger_out, encoder, decoder, sce):
+def rnn_train_step(params, x, ger_inp, ger_out, encoder, decoder, sce):
     with tf.GradientTape() as gtape:
         tot_loss= 0
         enc_seq, hidden1, hidden2= encoder(x)

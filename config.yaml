@@ -14,17 +14,19 @@ dataloader:
 rnn_attention:
     batch_size: 64
     learning_rate: .001
-    optimizer: 'rmsprop' #tf.keras.optimizers.RMSprop(params.learning_rate, clipvalue= 1)
+    optimizer: 'rmsprop'
     epochs: 400
+    ckpt_dir: 'weights/rnn_attention_ckpts'
     
     embed_size: 300
     gru_units: 128
 
 transformers:
     warmup_steps: 4000
-    optimizer: 'adam'    # tf.keras.optimizers.Adam(params.learning_rate)
-    # learning_rate: LearningRate(params.dmodel, params.warmup_steps)
+    optimizer: 'adam'
+    learning_rate: 'schedule' # either 'schedule' or some constant
     epochs: 20
+    ckpt_dir: 'weights/transformers_ckpts'
     
     k: 5 # beam width
     num_blocks: 4

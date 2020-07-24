@@ -24,6 +24,7 @@ import tensorflow as tf
 import numpy as np
 
 import os
+from utils import ACTNFN, LearningRate
 
 class InputEmbedding(tf.keras.layers.Layer):
     """
@@ -239,10 +240,12 @@ class Decoder(tf.keras.layers.Layer):
     
 class Transformer(tf.keras.Model):
     
-    def __init__(self, num_blocks, dmodel, depth, num_heads, inp_vocab_size, tar_vocab_size):
+    def __init__(self, num_blocks, dmodel, num_heads, inp_vocab_size, tar_vocab_size):
         super(Transformer, self).__init__()
-        self.encoder= Encoder(num_blocks, dmodel, depth, num_heads, inp_vocab_size)
-        self.decoder= Decoder(num_blocks, dmodel, depth, num_heads, tar_vocab_size)
+        self.depth= dmodel/ num_heads
+        
+        self.encoder= Encoder(num_blocks, dmodel, self.depth, num_heads, inp_vocab_size)
+        self.decoder= Decoder(num_blocks, dmodel, self.depth, num_heads, tar_vocab_size)
         self.linear= tf.keras.layers.Dense(tar_vocab_size)
         
     def call(self, enc_input, dec_input, enc_padding_mask= None, enc_dec_padding_mask= None, dec_seq_mask= None):
@@ -273,29 +276,87 @@ def transformer_loss_fn(y, ypred, sce):
     loss_ = mask*loss_
     return tf.reduce_mean(tf.reduce_mean(loss_, axis= 1))
 
-@tf.function
-def transformer_train_step(enc_input, dec_input, dec_output, transformer, sce):       
-    # create appropriate mask
-    enc_padding_mask= create_padding_mask(enc_input)
-    enc_dec_padding_mask= create_padding_mask(enc_input)
-    dec_seq_mask= unidirectional_input_mask(enc_input, dec_input)
+class TrainerTransformer(object):
     
-    with tf.GradientTape() as gtape:
-        ypred= transformer(enc_input, dec_input, enc_padding_mask, enc_dec_padding_mask, dec_seq_mask)
-        loss= loss_fn(dec_output, ypred, sce)
-    grads= gtape.gradient(loss, transformer.trainable_variables)
-    params.optimizer.apply_gradients(zip(grads, transformer.trainable_variables))
-    return grads, loss
-
-def save_checkpoints(params, transformer):
-    checkpoint_dir = 'weights'
-    checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
-    ckpt= tf.train.Checkpoint(optimizer= params.optimizer,
-                              transformer= transformer)
-    ckpt.save(file_prefix= checkpoint_prefix)
+    def __init__(self, transformer, config):
         
-def restore_checkpoint(params, transformer):
-    checkpoint_dir = 'weights'
-    ckpt= tf.train.Checkpoint(optimizer= params.optimizer,
-                              transformer= transformer)
-    ckpt.restore(tf.train.latest_checkpoint(checkpoint_dir))
+        self.transformer= transformer
+        self.config= config
+        
+        self.dmodel= config['transformer']['dmodel']
+        self.num_heads= config['transformer']['num_heads']
+        self.depth= self.dmodel/ self.num_heads
+        
+        if config['rnn_attention']['learning_rate'] == 'schedule':
+            self.learning_rate= LearningRate(self.dmodel, self.warmup_steps)
+        else:
+            self.learning_rate= config['rnn_attention']['learning_rate']
+        
+        self.optimizer= ACTNFN(config['transformer']['optimizer'], self.learning_rate)
+        
+        self.sce= tf.keras.losses.SparseCategoricalCrossentropy(from_logits= True, reduction= 'none')
+    
+    def train(self, inputs, save_model= False, load_model= False, save_evry_ckpt= False):
+        
+        enc_input, dec_input, dec_output= inputs[0], inputs[1], inputs[2]
+        
+        avg_loss= []
+        start= time.time()
+        
+        if load_model: self.restore_checkpoint(self.config['transformers']['ckpt_dir'])
+        
+        for epoch in (range(1, 1+self.config['transformers']['epochs'])):
+            
+            st= time.time()
+            losses= []
+            
+            for enc_seq, teach_force_seq, y in zip(enc_input, dec_input, dec_output):
+              
+                grads, loss= self.train_step(enc_seq, teach_force_seq, y)
+                losses.append(loss.numpy())
+            
+            avg_loss.append(np.mean(losses))
+        
+            if save_evry_ckpt:
+                self.save_checkpoints(self.config['transformers']['ckpt_dir'])
+            
+            print(f"EPOCH: {epoch} ::: LOSS: {loss} ::: TIME TAKEN: {time.time()-st}")
+        
+        if save_model: self.save_checkpoints(self.config['transformers']['ckpt_dir'])
+        
+        print('YAYY MODEL IS TRAINED')
+        print(f'TOTAL TIME TAKEN- {time.time() - start}')
+        
+        return grads, avg_loss
+
+    @tf.function
+    def train_step(enc_input, dec_input, dec_output):       
+        
+        # create appropriate mask
+        enc_padding_mask= create_padding_mask(enc_input)
+        enc_dec_padding_mask= create_padding_mask(enc_input)
+        dec_seq_mask= unidirectional_input_mask(enc_input, dec_input)
+        
+        with tf.GradientTape() as gtape:
+           
+            ypred= self.transformer(enc_input, dec_input, enc_padding_mask, enc_dec_padding_mask, dec_seq_mask)
+            loss= loss_fn(dec_output, ypred, self.sce)
+        
+        grads= gtape.gradient(loss, transformer.trainable_variables)
+        
+        self.optimizer.apply_gradients(zip(grads, transformer.trainable_variables))
+        
+        return grads, loss
+    
+    def save_checkpoints(ckpt_dir= 'weights/transformer_ckpts'):
+        checkpoint_dir = ckpt_dir
+        checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
+        ckpt= tf.train.Checkpoint(optimizer= self.optimizer,
+                                  transformer= self.transformer)
+        ckpt.save(file_prefix= checkpoint_prefix)
+            
+    def restore_checkpoint(ckpt_dir= 'weights/transformer_ckpts'):
+        checkpoint_dir = ckpt_dir
+        ckpt= tf.train.Checkpoint(optimizer= self.optimizer,
+                                  transformer= self.transformer)
+        ckpt.restore(tf.train.latest_checkpoint(checkpoint_dir))

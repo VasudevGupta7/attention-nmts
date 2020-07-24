@@ -5,6 +5,11 @@ NMTS with Attention
 """
 import tensorflow as tf
 import os
+import logging
+
+from utils import ACTNFN
+
+logger= logging.getLogger(__name__)
 
 class Encoder(tf.keras.Model):
     """
@@ -19,13 +24,17 @@ class Encoder(tf.keras.Model):
             HIDDEN STATE LAYER2 FINAL
     """
     
-    def __init__(self, params):
+    def __init__(self, config):
         super(Encoder, self).__init__()
-        self.embed= tf.keras.layers.Embedding(input_dim= params.eng_vocab, 
-                                              output_dim= params.embed_size)
-        self.gru1= tf.keras.layers.GRU(units= params.gru_units, kernel_initializer= 'glorot_normal',
+        self.eng_vocab= config['eng_vocab']
+        self.embed_size= config['rnn_attention']['embed_size']
+        self.gru_units= config['rnn_attention']['gru_units']
+        
+        self.embed= tf.keras.layers.Embedding(input_dim= self.eng_vocab, 
+                                              output_dim= self.embed_size)
+        self.gru1= tf.keras.layers.GRU(units= self.gru_units, kernel_initializer= 'glorot_normal',
                                        return_sequences= True, return_state= True)
-        self.gru2= tf.keras.layers.GRU(units= params.gru_units, kernel_initializer= 'glorot_normal',
+        self.gru2= tf.keras.layers.GRU(units= self.gru_units, kernel_initializer= 'glorot_normal',
                                        return_sequences= True, return_state= True)
     
     def call(self, input_seq):
@@ -48,10 +57,12 @@ class LuongAttention(tf.keras.layers.Layer):
     OUTPUT- CONTEXT VECTOR
             ATTENTION WEIGHTS (JUST FOR VISUALIZING)
     """
-    def __init__(self, params):
+    def __init__(self, config):
         super(LuongAttention, self).__init__()
+        self.gru_units= config['rnn_attention']['gru_units']
+        
         # dims same as dims of decoder gru units
-        self.tdfc= tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(units= params.gru_units))
+        self.tdfc= tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(units= self.gru_units))
     
     def call(self, en_seq, dec_output):
         # en_seq- (batch_size, max_len_encoder_input, gru_units)
@@ -72,16 +83,20 @@ class Decoder(tf.keras.Model):
     
     CONCAT METHODS ARE DEFINED FOR 1 TIMESTEP INPUT AT A MOMENT
     """
-    def __init__(self, params):
+    def __init__(self, config):
         super(Decoder, self).__init__()
-        self.embed= tf.keras.layers.Embedding(input_dim= params.ger_vocab, 
-                                              output_dim= params.embed_size)
-        self.gru1= tf.keras.layers.GRU(units= params.gru_units, kernel_initializer= 'glorot_normal',
+        self.ger_vocab= config['eng_vocab']
+        self.embed_size= config['rnn_attention']['embed_size']
+        self.gru_units= config['rnn_attention']['gru_units']
+        
+        self.embed= tf.keras.layers.Embedding(input_dim= self.ger_vocab, 
+                                              output_dim= self.embed_size)
+        self.gru1= tf.keras.layers.GRU(units= self.gru_units, kernel_initializer= 'glorot_normal',
                                        return_sequences= True, return_state= True)
-        self.gru2= tf.keras.layers.GRU(units= params.gru_units, kernel_initializer= 'glorot_normal',
+        self.gru2= tf.keras.layers.GRU(units= self.gru_units, kernel_initializer= 'glorot_normal',
                                        return_sequences= True, return_state= True)
-        self.attention= LuongAttention(params)
-        self.fc= tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(params.ger_vocab))
+        self.attention= LuongAttention(config)
+        self.fc= tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(self.ger_vocab))
 
     def call(self, enc_seq, teach_force_seq, init_hidden1, init_hidden2):
         # en_seq- (batch_size, max_len_encoder_input, gru_units)
@@ -119,32 +134,89 @@ def rnn_loss(y, ypred, sce):
     loss_= mask*loss_
     return tf.reduce_mean(loss_)
 
-@tf.function
-def rnn_train_step(params, x, ger_inp, ger_out, encoder, decoder, sce):
-    with tf.GradientTape() as gtape:
-        tot_loss= 0
-        enc_seq, hidden1, hidden2= encoder(x)
-        for i in range(params.dec_max_len):
-            dec_inp= tf.expand_dims(ger_inp[:, i], axis= 1)
-            ypred, hidden1, hidden2, attention_weights= decoder(enc_seq, dec_inp, hidden1, hidden2)
-            timestep_loss= loss(tf.expand_dims(ger_out[:, i], 1), ypred, sce)
-            tot_loss+= timestep_loss
-        avg_timestep_loss= tot_loss/params.dec_max_len
-    grads= gtape.gradient(avg_timestep_loss, encoder.trainable_variables + decoder.trainable_variables)
-    params.optimizer.apply_gradients(zip(grads, encoder.trainable_variables + decoder.trainable_variables))
-    return grads, avg_timestep_loss
-
-def save_checkpoints(params, encoder, decoder):
-    checkpoint_dir = 'weights'
-    checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
-    ckpt= tf.train.Checkpoint(optimizer= params.optimizer,
-                              encoder= encoder,
-                              decoder= decoder)
-    ckpt.save(file_prefix= checkpoint_prefix)
+class TrainerRNNAttention(object):
+    
+    def __init__(self, encoder, decoder, config):
+        self.encoder= encoder
+        self.decoder= decoder
+    
+        self.config= config
+        self.ckpt_dir= config['rnn_attention']['ckpt_dir']
+        self.dec_max_len= config['dataloader']['dec_max_len']
+        self.epochs= config['rnn_attention']['epochs']
         
-def restore_checkpoint(params, encoder, decoder):
-    checkpoint_dir = 'weights'
-    ckpt= tf.train.Checkpoint(optimizer= params.optimizer,
-                              encoder= encoder,
-                              decoder= decoder)
-    ckpt.restore(tf.train.latest_checkpoint(checkpoint_dir))
+        self.learning_rate= config['rnn_attention']['learning_rate']
+        self.optimizer= ACTNFN(config['rnn_attention']['optimizer'], self.learning_rate)
+        
+        self.sce= tf.keras.losses.SparseCategoricalCrossentropy(from_logits= True, reduction= 'none')
+    
+    def train(self, inputs, save_model= False, load_model= False, save_evry_ckpt= False):
+        
+        enc_seq, teach_force_seq, y= inputs[0], inputs[1], inputs[2]
+        
+        start= time.time()
+        avg_loss= []
+        
+        if load_model: self.restore_checkpoint(self.ckpt_dir)
+        
+        for e in track(range(1, self.epochs+1)):
+            losses= []
+            st= time.time()
+           
+            for enc_seq_batch, teach_force_seq_batch, y_batch in zip(enc_seq, teach_force_seq, y):
+                grads, loss= train_step(params, enc_seq_batch, teach_force_seq_batch, y_batch, encoder, decoder, sce)
+                losses.append(loss.numpy())
+            
+            avg_loss.append(np.mean(losses))
+            
+            if save_evry_ckpt: self.save_checkpoints(self.ckpt_dir)
+            
+            print(f'EPOCH- {e} ::::::: avgLOSS: {np.mean(losses)} ::::::: TIME: {time.time()- st}')
+            logger.info(grads) if e%4 == 0 else None
+        
+        if save_model: self.save_checkpoints(self.ckpt_dir)
+        print(f'total time taken: {time.time()-start}')
+        return grads, avg_loss
+    
+    @tf.function
+    def train_step(self, x, ger_inp, ger_out):
+        
+        with tf.GradientTape() as gtape:
+            
+            tot_loss= 0
+            enc_seq, hidden1, hidden2= self.encoder(x)
+            
+            for i in range(self.dec_max_len):
+            
+                dec_inp= tf.expand_dims(ger_inp[:, i], axis= 1)
+                ypred, hidden1, hidden2, attention_weights= self.decoder(enc_seq, dec_inp, hidden1, hidden2)
+                
+                timestep_loss= loss(tf.expand_dims(ger_out[:, i], 1), ypred, self.sce)
+                tot_loss+= timestep_loss
+           
+            avg_timestep_loss= tot_loss/self.dec_max_len
+        
+        trainable_vars= encoder.trainable_variables + decoder.trainable_variables
+        grads= gtape.gradient(avg_timestep_loss, trainable_vars)
+        
+        self.optimizer.apply_gradients(zip(grads, trainable_vars))
+        return grads, avg_timestep_loss
+    
+    def save_checkpoints(self, ckpt_dir= 'weights/rnn_attention_ckpts'):
+        
+        checkpoint_dir = ckpt_dir
+        checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
+        
+        ckpt= tf.train.Checkpoint(optimizer= self.optimizer,
+                                  encoder= self.encoder,
+                                  decoder= self.decoder)
+        ckpt.save(file_prefix= checkpoint_prefix)
+            
+    def restore_checkpoint(self, ckpt_dir= 'weights/rnn_attention'):
+       
+        checkpoint_dir = ckpt_dir
+        
+        ckpt= tf.train.Checkpoint(optimizer= self.optimizer,
+                                  encoder= self.encoder,
+                                  decoder= self.decoder)
+        ckpt.restore(tf.train.latest_checkpoint(checkpoint_dir))

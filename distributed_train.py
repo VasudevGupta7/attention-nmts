@@ -1,0 +1,123 @@
+"""Distributed Training based on multi gpus
+
+@author: vasudevgupta
+"""
+import tensorflow as tf
+import pandas as pd
+import numpy as np
+
+import time
+from tqdm import tqdm
+import rich
+from rich.progress import track
+
+import os
+import yaml
+import argparse
+
+from transformers import Transformer, TrainerTransformer
+from rnn_attention import Encoder, Decoder, TrainerRNNAttention
+
+make changes to loss function as per strategy
+implement distribute training custom function
+
+if __name__ == '__main__':
+    
+    parser= argparse.ArgumentParser(description= 'Distributed training based on Mirrored strategy')
+    
+    parser.add_argument('--num_gpu', type= int, default= 1, help= 'specify the number of gpu for distributed training')
+    parser.add_argument('--config', type= str, default= 'config.yaml', help= 'specify the file name containing configuartion')
+    
+    parser.add_argument('--save_model', action= store_true, default= False, help= 'specify whether to save final ckpts')
+    parser.add_argument('--load_model', action= store_true, default= False, help= 'specify whether to load ckpts')
+    parser.add_argument('--save_evry_ckpt', action= store_true, default= False, help= 'specify whether to save every ckpts')
+    
+    parser.add_argument('--dataset', type= str, default= 'text/eng2ger.csv', help= 'file name of dataset')
+    args= parser.parse_args()
+    
+    
+    devices= [f'/device:GPU:{i}' for i in range(args.num_gpu)]
+    strategy= tf.distribute.MirroredStrategy()
+    
+    config= yaml.safe_load(open(args.config, 'r'))
+    # load data
+    df= pd.read_csv(args.dataset)
+        
+    # generare tokens
+    tokenize_eng, detokenize_eng, len_eng= tokenizer(df['eng_input'], True)
+    tokenize_ger, detokenize_ger, len_ger= tokenizer(df['ger_input'], False)
+        
+    tokenize_eng['<pad>']= 0
+    detokenize_eng[0]= "<pad>"
+    tokenize_ger["<pad>"]= 0
+    detokenize_ger[0]= "<pad>"
+        
+    ## lets update the params
+    # config['dataloader']['num_samples']= df.shape[0]
+    # config['dataloader']['eng_vocab'] = len_eng+1 # adding 1 because of padding
+    # config['dataloader']['ger_vocab'] = len_ger+1 
+        
+    # lets do padding with 0: "<pad>"
+    df['eng_input']= df['eng_input'].map(lambda txt: padding(txt, config['dataloader']['en_max_len']))
+    df['ger_input']= df['ger_input'].map(lambda txt: padding(txt, config['dataloader']['dec_max_len']))
+    df['ger_target']= df['ger_target'].map(lambda txt: padding(txt, config['dataloader']['dec_max_len']))
+        
+    # num mapping
+    df['eng_tok']= df['eng_input'].map(lambda txt: [tokenize_eng[tok] for tok in txt.split(' ')])
+    
+    # DONot use nlp object since it will break < sos > eos sepeartely and problems will happen
+    df['teach_force_tok']= df['ger_input'].map(lambda txt: [tokenize_ger[tok] for tok in txt.split(' ')])
+    df['target_tok']= df['ger_target'].map(lambda txt: [tokenize_ger[tok] for tok in txt.split(' ')])
+    
+    if args.model_type == 'rnn_attention':
+        
+        # lets reverse the whole input eng seq
+        df['rev_eng_tok']= df['eng_tok'].map(lambda ls: ls[:: -1])
+        
+        # Lets make minibatches
+        enc_seq, teach_force_seq, y= make_minibatches(df, col1= 'rev_eng_tok', col2= 'teach_force_tok', col3= 'target_tok')
+        
+        inputs= (enc_seq, teach_force_seq, y)
+        
+        with strategy.scope():
+           
+            enc_seq= strategy.experimental_distribute_dataset(enc_seq)
+            teach_force_seq= strategy.experimental_distribute_dataset(teach_force_seq)
+            y= strategy.experimental_distribute_dataset(y)
+            
+            encoder= Encoder(config)
+            decoder= Decoder(config)
+            
+            trainer= TrainerRNNAttention(encoder, decoder, config)
+        
+            ## TRAINING TIME
+            grads, avg_loss= trainer.distributed_train(inputs, save_model= args.save_model, 
+                                     load_model= args.load_model, 
+                                     save_evry_ckpt= args.save_evry_ckpt)
+        
+    elif args.model_type == 'transformers':
+     
+        # Lets make minibatches
+        enc_input, dec_input, dec_output= make_minibatches(df, col1= 'eng_tok', col2= 'teach_force_tok', col3= 'target_tok')
+        
+        with strategy.scope():
+            
+            enc_input= strategy.experimental_distribute_dataset(enc_input)
+            dec_input= strategy.experimental_distribute_dataset(dec_input)
+            dec_output= strategy.experimental_distribute_dataset(dec_output)
+            
+            depth= config['dmodel']/ config['num_heads']
+            
+            transformer= Transformer(num_blocks= config['num_blocks'], dmodel= config['dmodel'], 
+                             num_heads= config['num_heads'],inp_vocab_size= config['eng_vocab'], 
+                             tar_vocab_size= config['ger_vocab'])
+            
+            trainer= TrainerTransformer(transformer, config)
+            
+            ## TRAINING TIME
+            grads, avg_loss= trainer.distributed_train(inputs, save_model= args.save_model, 
+                                         load_model= args.load_model, 
+                                         save_evry_ckpt= args.save_evry_ckpt)
+        
+    else:
+        print(f'input {model_type} is not supported')

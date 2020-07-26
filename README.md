@@ -19,10 +19,12 @@ Implemented the Transformer for building NMTS <br>
 `git clone https://github.com/VasudevGupta7/seq2seq.git`<br>
 **Run this script to install all the dependencies**: <br>
 `sh script.sh`<br>
-**To train the model, run the following command**:<br>
-`python3 train.py`<br>
-**To translate english to german execute the following command**:<br>
-`python3 translate2german.py`<br>
+**To train the model, checkout the following command**:<br>
+`python3 train.py --help`<br>
+**For distributed training over multiple GPUs, checkout the following command**:<br>
+`python3 distributed_train.py --help`<br>
+**To translate english to german checkout the following command**:<br>
+`python3 translate2german.py --help`<br>
 
 # References
 - [Sequence to Sequence Learning with Neural Networks](https://arxiv.org/abs/1409.3215)

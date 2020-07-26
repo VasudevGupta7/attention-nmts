@@ -116,16 +116,17 @@ def padding(txt_toks, max_len):
     _= [curr_ls.append("<pad>") for i in range(max_len-len_ls) if len(curr_ls)<max_len]
     return " ".join(curr_ls)
 
-def make_minibatches(df, col1= 'rev_eng_tok', col2= 'teach_force_tok', col3= 'target_tok'):
+def make_minibatches(df, config, col1= 'rev_eng_tok', col2= 'teach_force_tok', col3= 'target_tok'):
+    
+    batch_size= config['dataloader']['batch_size']
+    
     enc_seq= np.array([df[col1].values[i] for i in range(len(df[col1]))])
-    enc_seq= tf.data.Dataset.from_tensor_slices(enc_seq).batch(params.batch_size)
-
     teach_force_seq= np.array([df[col2].values[i] for i in range(len(df[col2]))])
-    teach_force_seq= tf.data.Dataset.from_tensor_slices(teach_force_seq).batch(params.batch_size)
-
     y= np.array([df[col3].values[i] for i in range(len(df[col3]))])
-    y= tf.data.Dataset.from_tensor_slices(y).batch(params.batch_size)
-    return enc_seq, teach_force_seq, y
+    
+    dataset= tf.data.Dataset.from_tensor_slices((enc_seq, teach_force_seq, y)).batch(batch_size)
+    
+    return dataset
 
 if __name__ == '__main__':
     
@@ -134,12 +135,14 @@ if __name__ == '__main__':
     INPUT- ENGLISH
     OUTPUT- GERMAN
     """
+    config= yaml.safe_load(open('config.yaml', 'r'))
+    
     with open('text/deu.txt', 'r') as file:
         data= file.read()
         dataset= data.split('\n')
     eng= []
     ger= []
-    idx= random.sample(range(len(dataset)), params.num_samples)
+    idx= random.sample(range(len(dataset)), config['dataloader']['num_samples'])
     for i in idx:
         e, g, _= dataset[i].split('\t')
         eng.append(e.lower())
@@ -162,11 +165,13 @@ if __name__ == '__main__':
     df['eng_num_tokens']= df['eng_input'].map(lambda txt: len([tok for tok in txt.split(' ')]))
     # removing all the samples which are having lens> 20 [To reduce padding effect]
     df= df[df['eng_num_tokens'] <= 20]
-    params.en_max_len= 20
+    
+    # config['dataloader']['en_max_len']= 20
     
     df['ger_num_tokens']= df['ger_input'].map(lambda txt: len([tok for tok in txt.split(' ')]))
     # removing all the samples which are having lens> 17 [To reduce padding effect]
     df= df[df['ger_num_tokens'] <= 17]
-    params.dec_max_len= 17
+    
+    # config['dataloader']['dec_max_len']= 17
     
     # df.to_csv('text/eng2ger.csv', index= False)

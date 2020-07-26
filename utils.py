@@ -4,7 +4,7 @@
 """
 import tensorflow as tf
 
-def ACTNFN(actn, learning_rate):
+def OPTM(actn, learning_rate):
     dictn = {
         'adam': tf.keras.optimizers.Adam(learning_rate),
         'rmsprop': tf.keras.optimizers.RMSprop(learning_rate),

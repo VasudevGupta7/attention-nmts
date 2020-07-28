@@ -14,19 +14,26 @@ Implemented the seq2seq model with Luong attention for building NMTS <br>
 Implemented the Transformer for building NMTS <br>
 <img src="assets/transformers_model.png" width="700" height="400"/> <br>
 
+# Some cool stuff
+- [ ] Quantized aware training support
+- [ ] Distributed training support
+- [ ] Initial embedding from XLM
+- [ ] Final layer embedding same as initial embedding
+- [ ] Knowledge Distillation based training (teacher- XLM)
+
 # Running this Project
-**Clone this project using**: <br>
+**1) Clone this project using**: <br>
 `git clone https://github.com/VasudevGupta7/seq2seq.git`<br>
 **Run this script to install all the dependencies**: <br>
 `sh script.sh`<br>
-**To train the model, checkout the following command**:<br>
+**2) To train the model, checkout the following command**:<br>
 `python3 train.py --help`<br>
-**For distributed training over multiple GPUs, checkout the following command**:<br>
+**3) For distributed training over multiple GPUs, checkout the following command**:<br>
 `python3 distributed_train.py --help`<br>
-**To translate english to german checkout the following command**:<br>
+**4) To translate english to german checkout the following command**:<br>
 `python3 translate2german.py --help`<br>
 
-# References
+# Papers Implemented
 - [Sequence to Sequence Learning with Neural Networks](https://arxiv.org/abs/1409.3215)
 - [Effective Approaches to Attention-based Neural Machine Translation](https://arxiv.org/abs/1508.04025)
 - [Attention Is All You Need](https://arxiv.org/abs/1706.03762)

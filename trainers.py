@@ -14,14 +14,77 @@ import logging
 import os
 import time
 
-from transformers import create_padding_mask, unidirectional_input_mask
-from utils import LearningRate, OPTM
+from callbacks import CustomCallback
+from modeling_transformers import create_padding_mask, unidirectional_input_mask
+from utils import OPTM
 
 logger= logging.getLogger(__name__)
+        
+class Trainer(object):
+    
+    def __init__(self, ckpt_dir, **kwargs):
+        
+        self.checkpoint= tf.train.Checkpoint(model1= kwargs.pop('model1', tf.Variable(0.)), 
+                                             optimizer= kwargs.pop('optimizer', tf.Variable(0.)),
+                                             model2= kwargs.pop('model2', tf.Variable(0.)))
+        
+        self.manager= tf.train.CheckpointManager(self.checkpoint, 
+                                                 directory=ckpt_dir,
+                                                 max_to_keep=kwargs.pop('max_to_keep', None),
+                                                 keep_checkpoint_every_n_hours=kwargs.pop('keep_checkpoint_every_n_hours', None))
+        
+    def restore(self, ckpt, assert_consumed= False):
+        # generally: self.manager.latest_checkpoint
+        status= self.checkpoint.restore(ckpt)
+        if assert_consumed:
+            status.assert_consumed()
+            logger.info('ckpt_restored')
+        
+    def save(self):
+        self.manager.save()
+    
+    # def distributed_train(self, dataset, strategy):
+        
+    #     self.strategy= strategy
+    #     self.num_replicas= self.batch_size / self.strategy.num_replicas_in_sync
+        
+    #     avg_loss= []
+    #     start= time.time()
+        
+    #     if load_model: self.restore_checkpoint(self.config['transformer']['ckpt_dir'])
+        
+    #     for epoch in (range(1, 1+self.config['transformer']['epochs'])):
+            
+    #         st= time.time()
+    #         losses= []
+            
+    #         for enc_seq, teach_force_seq, y in dataset:
+              
+    #             per_replica_loss, _= self.strategy.run(self.train_step(enc_seq, teach_force_seq, y),
+    #                                             args= (enc_seq, teach_force_seq, y))
+                
+    #             total_loss= 1
+                
+    #             losses.append(loss.numpy())
+            
+    #         avg_loss.append(np.mean(losses))
+        
+    #         if save_evry_ckpt:
+    #             self.save_checkpoints(self.config['transformer']['ckpt_dir'])
+            
+    #         print(f"EPOCH: {epoch} ::: LOSS: {loss} ::: TIME TAKEN: {time.time()-st}")
+        
+    #     if save_model: self.save_checkpoints(self.config['transformer']['ckpt_dir'])
+        
+    #     print('YAYY MODEL IS TRAINED')
+    #     print(f'TOTAL TIME TAKEN- {time.time() - start}')
+        
 
-class TrainerRNNAttention(object):
+class TrainerRNNAttention(Trainer):
     
     def __init__(self, encoder, decoder, config):
+        ckpt_dir= config['rnn_attention']['ckpt_dir']
+        super(TrainerRNNAttention, self).__init__(ckpt_dir, name= 'rnn_attention')
         
         self.encoder= encoder
         self.decoder= decoder
@@ -107,31 +170,11 @@ class TrainerRNNAttention(object):
         
         return tf.reduce_mean(loss_)
     
-    def distributed_train(self):
-        pass
-    
-    def save_checkpoints(self, ckpt_dir= 'weights/rnn_attention_ckpts'):
-        
-        checkpoint_dir = ckpt_dir
-        checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
-        
-        ckpt= tf.train.Checkpoint(optimizer= self.optimizer,
-                                  encoder= self.encoder,
-                                  decoder= self.decoder)
-        ckpt.save(file_prefix= checkpoint_prefix)
-            
-    def restore_checkpoint(self, ckpt_dir= 'weights/rnn_attention'):
-       
-        checkpoint_dir = ckpt_dir
-        
-        ckpt= tf.train.Checkpoint(optimizer= self.optimizer,
-                                  encoder= self.encoder,
-                                  decoder= self.decoder)
-        ckpt.restore(tf.train.latest_checkpoint(checkpoint_dir))
-
-class TrainerTransformer(object):
+class TrainerTransformer(Trainer):
     
     def __init__(self, transformer, config):
+        ckpt_dir= config['transformers']['ckpt_dir']
+        super(TrainerTransformer, self).__init__(ckpt_dir, name= 'transformer')
         
         self.transformer= transformer
         self.config= config
@@ -215,54 +258,4 @@ class TrainerTransformer(object):
         loss_ = mask*loss_
         # dividing it by global batch size
         return tf.reduce_sum(tf.reduce_mean(loss_, axis= 1)) / self.batch_size
-        
-    # def distributed_train(self, dataset, strategy):
-        
-    #     self.strategy= strategy
-    #     self.num_replicas= self.batch_size / self.strategy.num_replicas_in_sync
-        
-    #     avg_loss= []
-    #     start= time.time()
-        
-    #     if load_model: self.restore_checkpoint(self.config['transformer']['ckpt_dir'])
-        
-    #     for epoch in (range(1, 1+self.config['transformer']['epochs'])):
-            
-    #         st= time.time()
-    #         losses= []
-            
-    #         for enc_seq, teach_force_seq, y in dataset:
-              
-    #             per_replica_loss, _= self.strategy.run(self.train_step(enc_seq, teach_force_seq, y),
-    #                                            args= (enc_seq, teach_force_seq, y))
-                
-    #             total_loss= 
-                
-    #             losses.append(loss.numpy())
-            
-    #         avg_loss.append(np.mean(losses))
-        
-    #         if save_evry_ckpt:
-    #             self.save_checkpoints(self.config['transformer']['ckpt_dir'])
-            
-    #         print(f"EPOCH: {epoch} ::: LOSS: {loss} ::: TIME TAKEN: {time.time()-st}")
-        
-    #     if save_model: self.save_checkpoints(self.config['transformer']['ckpt_dir'])
-        
-    #     print('YAYY MODEL IS TRAINED')
-    #     print(f'TOTAL TIME TAKEN- {time.time() - start}')
-        
-    
-    def save_checkpoints(ckpt_dir= 'weights/transformer_ckpts'):
-        checkpoint_dir = ckpt_dir
-        checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
-        ckpt= tf.train.Checkpoint(optimizer= self.optimizer,
-                                  transformer= self.transformer)
-        ckpt.save(file_prefix= checkpoint_prefix)
-            
-    def restore_checkpoint(ckpt_dir= 'weights/transformer_ckpts'):
-        checkpoint_dir = ckpt_dir
-        ckpt= tf.train.Checkpoint(optimizer= self.optimizer,
-                                  transformer= self.transformer)
-        ckpt.restore(tf.train.latest_checkpoint(checkpoint_dir))
 

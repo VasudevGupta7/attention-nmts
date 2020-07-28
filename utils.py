@@ -3,6 +3,9 @@
 @author: vasudevgupta
 """
 import tensorflow as tf
+import logging
+
+logger= logging.getLogger(__name__)
 
 def OPTM(actn, learning_rate):
     dictn = {
@@ -13,7 +16,7 @@ def OPTM(actn, learning_rate):
     return dictn[actn]
 
 # scheduling learning rate as per given in paper
-class LearningRate(tf.keras.optimizers.schedules.LearningRateSchedule):
+class SchedulingLearningRate(tf.keras.optimizers.schedules.LearningRateSchedule):
     """
     SCHEDULING THE LEARNING RATE AS PER GIVEN IN PAPER
     """
@@ -30,4 +33,9 @@ class LearningRate(tf.keras.optimizers.schedules.LearningRateSchedule):
         arg2= step_num*tf.math.pow(tf.cast(self.warmup_steps, tf.float32), -1.5)
         
         return (1/ tf.math.sqrt(tf.cast(self.dmodel, tf.float32)))*tf.minimum(arg1, arg2)
-
+    
+    def get_config(self):
+        config= super(SchedulingLearningRate, self).get_config()
+        
+        config.update({'dmodel': self.dmodel, 'warmup_steps': self.warmup_steps})
+        return config

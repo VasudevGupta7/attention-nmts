@@ -25,7 +25,7 @@ import numpy as np
 import logging
 import os
 
-from utils import OPTM, LearningRate
+from utils import OPTM, SchedulingLearningRate
 
 logger= logging.getLogger(__name__)
 

@@ -12,8 +12,8 @@ import yaml
 import argparse
 
 from dataloader import tokenizer, padding, make_minibatches
-from transformers import Transformer
-from rnn_attention import Encoder, Decoder 
+from modeling_transformers import Transformer
+from modeling_rnn_attention import Encoder, Decoder 
 from trainers import TrainerRNNAttention, TrainerTransformer
 
 logger= logging.getLogger(__name__)

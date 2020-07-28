@@ -1,7 +1,4 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Jul 24 21:47:02 2020
+"""BEAM SEARCH DECODER
 
 @author: vasudevgupta
 """

@@ -42,7 +42,7 @@ class Encoder(tf.keras.Model):
                                        return_sequences= True, return_state= True)
     
     def call(self, input_seq):
-        # shape= (batch_size, max_length_encoder_input)
+        # (batch_size, max_length_encoder_input)
         
         x= self.embed(input_seq)
         # shape= (batch_size, max_length_encoder_input, embed_dims)

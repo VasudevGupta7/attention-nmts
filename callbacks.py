@@ -13,7 +13,8 @@ logger= logging.getLogger(__name__)
 class CustomCallback(object):
     
     def __init__(self):
-        pass
+        
+        self.step = 0
         
     def on_epoch_begin(self, epoch):
         
@@ -22,8 +23,9 @@ class CustomCallback(object):
         self.val_loss= []
         logger.info(f'epoch-{epoch} started')
         
-    def on_batch_end(self, batch, tr_loss, val_loss):
+    def on_batch_end(self, tr_loss, val_loss):
         
+        self.step += 1
         self.tr_loss.append(tr_loss.numpy())
         self.val_loss.append(val_loss.numpy())
         
@@ -34,7 +36,10 @@ class CustomCallback(object):
                     'step_val_crossentropy_loss': val_loss.numpy()
                 }
         wandb.log(step_metrics)
+        
         print(f"step-{batch} ===== {step_metrics}")
+        
+        return step_metrics
     
     def on_epoch_end(self, epoch):
         
@@ -45,6 +50,8 @@ class CustomCallback(object):
                 'epoch_val_crossentropy_loss': np.mean(self.val_lss)
             }
         wandb.log(epoch_metrics, commit= False)
+        
         print(f"EPOCH-{epoch} ===== TIME TAKEN-{np.around(time.time() - self.st_epoch, 2)}sec ===== {epoch_metrics}")
         
+        return epoch_metrics
     

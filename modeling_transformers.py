@@ -1,5 +1,4 @@
-"""
-Transformer for building NMTS
+"""Transformers
 
 CLASSES/ FUNCTION AVAILABLE IN THIS FILE
     - INPUT EMBEDDING
@@ -23,9 +22,6 @@ import tensorflow as tf
 import numpy as np
 
 import logging
-import os
-
-from utils import OPTM, SchedulingLearningRate
 
 logger= logging.getLogger(__name__)
 
@@ -33,15 +29,23 @@ class InputEmbedding(tf.keras.layers.Layer):
     """
     EMBED_WORDS- (NUM_WORDS, EMBED_DIMS)
     """
-    def __init__(self, dmodel, vocab_size, name= 'Combined-Embedding-Layer'):
+    def __init__(self, dmodel, vocab_size, learn_pos_embed= False, name= 'Combined-Embedding-Layer'):
         super(InputEmbedding, self).__init__(name= name)
         
+        self.learn_pos_embed= learn_pos_embed
         self.dmodel= dmodel
+        self.vocab_size= vocab_size
+        
         self.embed= tf.keras.layers.Embedding(input_dim= vocab_size, output_dim= dmodel, name= "Normal_Embedding")
-        self.position_embed= tf.keras.layers.Lambda(lambda emb_seq: self.position_embedding(emb_seq), name= "Position_Embedding")
+        
+        if not self.learn_pos_embed:
+            self.position_embed= tf.keras.layers.Lambda(lambda emb_seq: self.position_embedding(emb_seq), name= "Position_Embedding")
+            self.position_embed.trainable= False
+        else:
+            raise ValueError('Not implemented here')
         
     def position_embedding(self, emb_seq):
-        # emb_seq- (batch_size, seqlen, emb_dims)
+        # emb_seq -> (batch_size, seqlen, emb_dims)
         
         pos_emb_seq= np.empty(shape= (emb_seq.shape))
         l= pos_emb_seq.shape[-2]
@@ -50,21 +54,31 @@ class InputEmbedding(tf.keras.layers.Layer):
         pos_emb_seq[:, :, 0::2]= [np.sin(angle(j, np.arange(self.dmodel)[0::2])) for j in np.arange(l)]
         pos_emb_seq[:, :, 1::2]= [np.cos(angle(j, np.arange(self.dmodel)[1::2])) for j in np.arange(l)]
         
-        # emb_seq- (batch_size, seqlen, emb_dims)
+        # pos_emb_seq -> (batch_size, seqlen, emb_dims)
         return tf.convert_to_tensor(pos_emb_seq, dtype= tf.float32)
         
     def call(self, seq):
-        # seq- (batch_size, seqlen)
+        # seq -> (batch_size, seqlen)
         
         emb_seq= self.embed(seq)
-        # emb_seq- (batch_size, seqlen, dmodel)
+        # emb_seq -> (batch_size, seqlen, dmodel)
         
         position_emb= self.position_embed(emb_seq)
-        # position_seq- (batch_size, seqlen, dmodel)
+        # position_seq -> (batch_size, seqlen, dmodel)
         
         model_emb_seq= emb_seq + position_emb
-        # model_emb_seq- (batch_size, seqlen, dmodel)
+        # model_emb_seq -> (batch_size, seqlen, dmodel)
+        
         return model_emb_seq        
+    
+    def get_config(self):
+        config= super(InputEmbedding, self).get_config()
+        config.update({
+            'learn_pos_embed': self.learn_pos_embed,
+            'dmodel': self.dmodel,
+            'vocab_size': self.vocab_size
+            })
+        return config
 
 class MultiheadAttention(tf.keras.layers.Layer):
     
@@ -73,6 +87,7 @@ class MultiheadAttention(tf.keras.layers.Layer):
         
         self.dmodel= dmodel
         self.num_heads= num_heads
+        
         self.depth= tf.cast(dmodel / num_heads, tf.int32) # 64
         
         self.linear= tf.keras.layers.Dense(self.dmodel)
@@ -89,35 +104,35 @@ class MultiheadAttention(tf.keras.layers.Layer):
             or look up ahead mask; dims= (seqlen, seqlen)
         """
        
-        # Q, K, V- (batch_size, num_heads, seqlen, depth)
+        # Q, K, V -> (batch_size, num_heads, seqlen, depth)
         
         scores= tf.matmul(Q, K, transpose_b= True)
-        # scores- (batch_size, num_heads, Qseqlen, Kseq_len); axis= -1 apply softmax
+        # scores -> (batch_size, num_heads, Qseqlen, Kseq_len); axis= -1 apply softmax
         
         scaled_scores= scores/ tf.math.sqrt(tf.cast(self.depth, tf.float32))
-        # scaled_scores- (batch_size, num_heads, Qseqlen, Kseq_len)
+        # scaled_scores -> (batch_size, num_heads, Qseqlen, Kseq_len)
         
         if mask is not None:
             scaled_scores += mask*(-1e9)
-        # scaled_scores- (batch_size, num_heads, Qseqlen, Kseq_len)
+        # scaled_scores -> (batch_size, num_heads, Qseqlen, Kseq_len)
         
         attention_weights= tf.nn.softmax(scaled_scores, axis= -1)
-        # attention_weights- (batch_size, num_heads, Qseqlen, Kseqlen)
+        # attention_weights -> (batch_size, num_heads, Qseqlen, Kseqlen)
         
         values_weighted_sum= tf.matmul(attention_weights, V)
-        # values_weighted_sum- (batch_size, num_heads, Qseqlen, depth)
+        # values_weighted_sum -> (batch_size, num_heads, Qseqlen, depth)
         
         return values_weighted_sum, attention_weights
         
     def multi_head_split(self, x):
-        # x- (batch_size, seqlen, dmodel)
+        # x -> (batch_size, seqlen, dmodel)
         
         (a,b,c)= x.shape
         x= tf.reshape(x, (a, b, self.num_heads, self.depth))
-        # x- (batch_size, seqlen, num_heads, depth)
+        # x -> (batch_size, seqlen, num_heads, depth)
         
         x= tf.transpose(x, perm= (0, 2, 1, 3))
-        # x- (batch_size, num_heads, seqlen, depth)
+        # x -> (batch_size, num_heads, seqlen, depth)
         
         return x
 
@@ -126,27 +141,36 @@ class MultiheadAttention(tf.keras.layers.Layer):
         Q= self.l1(Q)
         K= self.l2(K)
         V= self.l3(V)
-        # Q, K, V- (batch_size, seqlen, dmodel)
+        # Q, K, V -> (batch_size, seqlen, dmodel)
         
         Q= self.multi_head_split(Q)
         K= self.multi_head_split(K)
         V= self.multi_head_split(V)
-        # Q, K, V- (batch_size, num_heads, seqlen, depth)
+        # Q, K, V -> (batch_size, num_heads, seqlen, depth)
        
         values_weighted_sum, attention_weights= self.scaled_dot_product_attention(Q, K, V, mask)
-        # values_weighted_sum- (batch_size, num_heads, Qseqlen, depth)
+        # values_weighted_sum -> (batch_size, num_heads, Qseqlen, depth)
        
         values_weighted_sum= tf.transpose(values_weighted_sum, perm= (0, 2, 1, 3))
-        # values_weighted_sum- (batch_size, Qseqlen, num_heads, depth)
+        # values_weighted_sum -> (batch_size, Qseqlen, num_heads, depth)
        
         (a,b,c,d)= values_weighted_sum.shape ## lets concatenate all heads
         concat_multiheads= tf.reshape(values_weighted_sum, (a, b, c*d))
-        # (batch_size, Qseqlen, num_heads*depth)
+        # concat_multiheads -> (batch_size, Qseqlen, num_heads*depth)
         
         seq= self.linear(concat_multiheads)
-        # seq- (batch_size, Qseqlen, dmodel)
+        # seq -> (batch_size, Qseqlen, dmodel)
         
         return seq
+    
+    def get_config(self):
+        config= super(MultiheadAttention, self).get_config()
+        config.update({
+            'num_heads': self.num_heads,
+            'dmodel': self.dmodel,
+            'depth': self.depth
+            })
+        return config
 
 class FeedForwardLayer(tf.keras.layers.Layer):
     

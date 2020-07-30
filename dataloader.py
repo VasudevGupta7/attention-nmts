@@ -3,6 +3,8 @@ TEXT PREPROCESSING FOR BUILDING NMTS
 
 @author: vasudevgupta
 """
+# using hugging face transformers for initializing word embedding
+import transformers
 
 import spacy
 import re

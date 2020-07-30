@@ -4,6 +4,7 @@
 """
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras.mixed_precision import experimental as mixed_precision
 
 import logging
 
@@ -17,7 +18,11 @@ class Trainer(object):
     
     def __init__(self, 
                  ckpt_dir, 
+                 precision_policy= 'mixed_float16',
                  **kwargs):
+        
+        self.policy= mixed_precision.Policy(precision_policy)
+        mixed_precision.set_policy(self.policy)
         
         self.ckpt_dir= ckpt_dir
         
@@ -137,7 +142,9 @@ class TrainerRNNAttention(Trainer):
         self.epochs= config['rnn_attention']['epochs']
         
         self.learning_rate= config['rnn_attention']['learning_rate']
+        
         self.optimizer= OPTM(config['rnn_attention']['optimizer'], self.learning_rate)
+        self.optimizer= mixed_precision.LossScaleOptimizer(self.optimizer, loss_scale= 'dynamic')
         
         self.sce= tf.keras.losses.SparseCategoricalCrossentropy(from_logits= True, reduction= 'none')
     
@@ -157,11 +164,12 @@ class TrainerRNNAttention(Trainer):
                 timestep_loss= self.rnn_loss(tf.expand_dims(dec_out[:, i], 1), ypred)
                 tot_loss+= timestep_loss
            
-            avg_timestep_loss= tot_loss/self.dec_max_len
+            avg_timestep_loss= self.optimizer.get_scaled_loss(tot_loss/self.dec_max_len)
         
         trainable_vars= self.encoder.trainable_variables + self.decoder.trainable_variables
         
         grads= gtape.gradient(avg_timestep_loss, trainable_vars)
+        grads= self.optimizer.get_unscaled_gradients(grads)
         
         self.optimizer.apply_gradients(zip(grads, trainable_vars))
         

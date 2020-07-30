@@ -19,6 +19,7 @@ CLASSES/ FUNCTION AVAILABLE IN THIS FILE
 """
 
 import tensorflow as tf
+from tensorflow.keras.mixed_precision import experimental as mixed_precision
 import numpy as np
 
 import logging
@@ -179,7 +180,7 @@ class FeedForwardLayer(tf.keras.layers.Layer):
         
         self.linear1= tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(2048,
                                                      kernel_initializer= 'he_normal'))
-        self.dropout= tf.keras.layers.Dropout(0.6)
+        self.dropout= tf.keras.layers.Dropout(0.2)
         self.relu= tf.keras.layers.ReLU()
         self.linear2= tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(dmodel))
 
@@ -317,7 +318,7 @@ class Transformer(tf.keras.Model):
         
         self.encoder= Encoder(num_blocks, dmodel, self.depth, num_heads, inp_vocab_size)
         self.decoder= Decoder(num_blocks, dmodel, self.depth, num_heads, tar_vocab_size)
-        self.linear= tf.keras.layers.Dense(tar_vocab_size)
+        self.linear= tf.keras.layers.Dense(tar_vocab_size, dtype= mixed_precision.Policy('float32'))
         
     def call(self, enc_input, dec_input, enc_padding_mask= None, enc_dec_padding_mask= None, dec_seq_mask= None):
         

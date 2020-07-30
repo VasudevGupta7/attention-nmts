@@ -3,6 +3,7 @@
 @author: vasudevgupta
 """
 import tensorflow as tf
+from tensorflow.keras.mixed_precision import experimental as mixed_precision
 import os
 import logging
 
@@ -117,7 +118,7 @@ class Decoder(tf.keras.Model):
         
         self.attention= LuongAttention(config)
         
-        self.fc= tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(self.ger_vocab))
+        self.fc= tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(self.ger_vocab, dtype= mixed_precision.Policy('float32')))
 
     def call(self, enc_seq, teach_force_seq, init_hidden1, init_hidden2):
         # en_seq- (batch_size, max_len_encoder_input, gru_units)

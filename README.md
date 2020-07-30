@@ -15,11 +15,10 @@ Implemented the Transformer for building NMTS <br>
 <img src="assets/transformers_model.png" width="700" height="400"/> <br>
 
 # Some cool stuff
-- [ ] Quantized aware training support
+- [x] Mixed precision (float16-float32) based training
 - [ ] Distributed training support
-- [ ] Initial embedding from XLM
+- [ ] Initial embedding from XLM-R
 - [ ] Final layer embedding same as initial embedding
-- [ ] Knowledge Distillation based training (teacher- XLM)
 
 # Running this Project
 **1) Clone this project using**: <br>

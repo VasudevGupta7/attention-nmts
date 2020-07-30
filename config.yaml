@@ -24,9 +24,11 @@ transformer:
     
 # don't tune it now
 dataloader:
+
+    ger_id: "anonymous-german-nlp/german-gpt2"
+    eng_id: "gpt2"
+    
     num_samples: 15000 ## taking only 25000 samples for training purposes
     batch_size: 64
-    eng_vocab: 5776 # got this after tokenizing dataset- english
-    ger_vocab: 8960 # got this after tokenizing dataset- german
     dec_max_len: 17
     en_max_len: 20

@@ -12,7 +12,10 @@ import contractions
 import unicodedata
 
 import random
+
+import transformers
 import tensorflow as tf
+
 import numpy as np
 import pandas as pd
 
@@ -100,80 +103,36 @@ def call_preprocessing(df_col, nlp_en= True, lower_= True, remove_pattern_= Fals
         df_col= df_col.map(lambda text: text.lower())
     return df_col
 
-def tokenizer(df_col, nlp_en= True):
-    vocab= set()
-    _= [[vocab.update([tok]) for tok in text.split(" ")] for text in df_col]
-    ## need to append "<sos> " token " <eos>" depending on what is df_col
-    if not nlp_en:
-        vocab.update(["<sos>"])
-        vocab.update(["<eos>"])
-    # 0 is reserved for padding
-    tokenize= dict(zip(vocab, range(1, 1+len(vocab))))
-    detokenize= dict(zip(range(1, 1+len(vocab)), vocab))
-    return tokenize, detokenize, len(vocab)
-
-def padding(txt_toks, max_len):
-    curr_ls= txt_toks.split(" ")
-    len_ls= len(curr_ls)
-    _= [curr_ls.append("<pad>") for i in range(max_len-len_ls) if len(curr_ls)<max_len]
-    return " ".join(curr_ls)
-
-def make_minibatches(df, config, col1= 'rev_eng_tok', col2= 'teach_force_tok', col3= 'target_tok'):
+class Dataloader(object):
     
-    batch_size= config['dataloader']['batch_size']
-    
-    enc_seq= np.array([df[col1].values[i] for i in range(len(df[col1]))])
-    teach_force_seq= np.array([df[col2].values[i] for i in range(len(df[col2]))])
-    y= np.array([df[col3].values[i] for i in range(len(df[col3]))])
-    
-    dataset= tf.data.Dataset.from_tensor_slices((enc_seq, teach_force_seq, y)).batch(batch_size)
-    
-    return dataset
-
-if __name__ == '__main__':
-    
-    """
-    FILE READING AND INPUT OUTPUT SEPEARTION
-    INPUT- ENGLISH
-    OUTPUT- GERMAN
-    """
-    config= yaml.safe_load(open('config.yaml', 'r'))
-    
-    with open('text/deu.txt', 'r') as file:
-        data= file.read()
-        dataset= data.split('\n')
-    eng= []
-    ger= []
-    idx= random.sample(range(len(dataset)), config['dataloader']['num_samples'])
-    for i in idx:
-        e, g, _= dataset[i].split('\t')
-        eng.append(e.lower())
-        ger.append(g.lower())
-    df= pd.DataFrame([eng, ger], index= ['eng', 'ger']).T
-    
-    
-    df['eng_input']= call_preprocessing(df['eng'], nlp_en= True, lower_= True, remove_pattern_= False, tokenize_words_= True,
-                    expand_contractions_= True, do_lemmatization_= False,
-                    sos= False, eos= False, remove_accents_= True)
-    
-    df['ger_input']= call_preprocessing(df['ger'], nlp_en= False, remove_pattern_= False, tokenize_words_= True,
-                    expand_contractions_= False, do_lemmatization_= False,
-                    sos= True, eos= False, remove_accents_= True)
-    
-    df['ger_target']= call_preprocessing(df['ger'], nlp_en= False, remove_pattern_= False, tokenize_words_= True,
-                    expand_contractions_= False, do_lemmatization_= False,
-                    sos= False, eos= True, remove_accents_= True)
+    def __init__(self, model_id):
         
-    df['eng_num_tokens']= df['eng_input'].map(lambda txt: len([tok for tok in txt.split(' ')]))
-    # removing all the samples which are having lens> 20 [To reduce padding effect]
-    df= df[df['eng_num_tokens'] <= 20]
+        self.model= transformers.TFAutoModel.from_pretrained(model_id)
+        self.tokenizer= transformers.AutoTokenizer.from_pretrained(model_id)
+        
+    @property
+    def tokenize(self):
+        return self.tokenizer.tokenize
     
-    # config['dataloader']['en_max_len']= 20
+    @property
+    def get_ids(self):
+        return self.tokenizer.convert_tokens_to_ids
     
-    df['ger_num_tokens']= df['ger_input'].map(lambda txt: len([tok for tok in txt.split(' ')]))
-    # removing all the samples which are having lens> 17 [To reduce padding effect]
-    df= df[df['ger_num_tokens'] <= 17]
+    @property
+    def get_toks(self):
+        return self.tokenizer.convert_ids_to_tokens
     
-    # config['dataloader']['dec_max_len']= 17
+    def tokenize_col(self, df_col):
+        return df_col.apply(lambda x: self.get_ids(self.tokenize(x)))
     
-    # df.to_csv('text/eng2ger.csv', index= False)
+    def get_weights(self):
+        embed_weights= self.model.transformer.wte.get_weights()[0]
+        return embed_weights
+        
+    def get_dataset(self, df_col):
+        
+        dataset= tf.data.Dataset.from_tensor_slices(df_col.values)
+        dataset= dataset.map(lambda x: self.tokenize(x))
+    
+        return dataset
+

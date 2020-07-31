@@ -6,16 +6,19 @@ rnn_attention:
     optimizer: 'rmsprop'
     epochs: 2
     ckpt_dir: 'weights/rnn_attention_ckpts'
+    policy: 'mixed_float16'
     
     embed_size: 100
     gru_units: 64
 
+# learning rate implementation is same as given in paper
 transformer:
     warmup_steps: 4000
     optimizer: 'adam'
     learning_rate: 'schedule' # either 'schedule' or some constant
     epochs: 2
     ckpt_dir: 'weights/transformers_ckpts'
+    policy: 'mixed_float16'
     
     k: 5 # beam width
     num_blocks: 2
@@ -25,10 +28,11 @@ transformer:
 # don't tune it now
 dataloader:
 
+    # using these models just to initialize embedding for my transformer architecture
     ger_id: "anonymous-german-nlp/german-gpt2"
     eng_id: "gpt2"
     
     num_samples: 15000 ## taking only 25000 samples for training purposes
-    batch_size: 64
+    batch_size: 128
     dec_max_len: 17
     en_max_len: 20

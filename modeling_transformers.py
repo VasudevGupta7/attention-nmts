@@ -1,4 +1,4 @@
-"""Transformers
+"""Transformer
 
 CLASSES/ FUNCTION AVAILABLE IN THIS FILE
     - INPUT EMBEDDING
@@ -22,6 +22,8 @@ import tensorflow as tf
 from tensorflow.keras.mixed_precision import experimental as mixed_precision
 import numpy as np
 
+from dataloader import Dataloader
+
 import logging
 
 logger= logging.getLogger(__name__)
@@ -30,21 +32,32 @@ class InputEmbedding(tf.keras.layers.Layer):
     """
     EMBED_WORDS- (NUM_WORDS, EMBED_DIMS)
     """
-    def __init__(self, dmodel, vocab_size, learn_pos_embed= False, name= 'Combined-Embedding-Layer'):
+    def __init__(self, dmodel, vocab_size, embed_id= None, learn_pos_embed= False, name= 'Combined-Embedding-Layer'):
         super(InputEmbedding, self).__init__(name= name)
         
         self.learn_pos_embed= learn_pos_embed
         self.dmodel= dmodel
         self.vocab_size= vocab_size
         
-        self.embed= tf.keras.layers.Embedding(input_dim= vocab_size, output_dim= dmodel, name= "Normal_Embedding")
-        
+        if embed_id == None:
+            self.embed= tf.keras.layers.Embedding(input_dim= vocab_size, output_dim= dmodel, name= "Normal_Embedding")
+        else:
+            self.embed = tf.keras.layers.Lambda(lambda input_ids: self.normal_embedding(embed_id, input_ids))
+            
         if not self.learn_pos_embed:
             self.position_embed= tf.keras.layers.Lambda(lambda emb_seq: self.position_embedding(emb_seq), name= "Position_Embedding")
             self.position_embed.trainable= False
         else:
-            raise ValueError('Not implemented here')
+            raise ValueError('Currently not supported')
         
+    # def normal_embedding(self, embed_id, input_ids):
+        
+    #     dataloader= Dataloader(embed_id)
+    #     embed_weights= dataloader.get_weights()
+        
+        
+        
+    
     def position_embedding(self, emb_seq):
         # emb_seq -> (batch_size, seqlen, emb_dims)
         
@@ -227,6 +240,15 @@ class EncoderLayer(tf.keras.layers.Layer):
         # out- (batch_size, seq, dmodel)
         
         return out
+    
+    def get_config(self):
+        config= super(EncoderLayer, self).get_config()
+        config.update({
+            'num_heads': self.num_heads,
+            'dmodel': self.dmodel,
+            'depth': self.depth
+            })
+        return config
 
 class Encoder(tf.keras.layers.Layer):
     
@@ -288,6 +310,15 @@ class DecoderLayer(tf.keras.layers.Layer):
         # x- (batch_size, tar_seqlen, dmodel)
         
         return x
+    
+    def get_config(self):
+        config= super(DecoderLayer, self).get_config()
+        config.update({
+            'num_heads': self.num_heads,
+            'dmodel': self.dmodel,
+            'depth': self.depth
+            })
+        return config
 
 class Decoder(tf.keras.layers.Layer):
     
@@ -314,7 +345,9 @@ class Transformer(tf.keras.Model):
     def __init__(self, num_blocks, dmodel, num_heads, inp_vocab_size, tar_vocab_size):
         super(Transformer, self).__init__()
         
+        self.dmodel= dmodel
         self.depth= dmodel/ num_heads
+        self.num_heads= num_heads
         
         self.encoder= Encoder(num_blocks, dmodel, self.depth, num_heads, inp_vocab_size)
         self.decoder= Decoder(num_blocks, dmodel, self.depth, num_heads, tar_vocab_size)
@@ -332,6 +365,15 @@ class Transformer(tf.keras.Model):
         # x- (batch_size, tar_seqlen, tar_vocab_size)
         
         return x
+    
+    def get_config(self):
+        config= super(Transformer, self).get_config()
+        config.update({
+            'num_heads': self.num_heads,
+            'dmodel': self.dmodel,
+            'depth': self.depth
+            })
+        return config
 
 def create_padding_mask(kseq):
     # (batch_size, key_seqlen)

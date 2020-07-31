@@ -18,7 +18,7 @@ Implemented the Transformer for building NMTS <br>
 - [x] Mixed precision (float16-float32) based training
 - [ ] Distributed training support
 - [ ] Initial embedding from pretrained models (taking eng and ger embedding from gpt2 trained on eng and ger respectively)
-- [ ] Final layer embedding same as initial embedding
+- [ ] Final layer embedding same as initial embedding (same way as in Bert)
 
 # Running this Project
 **1) Clone this project using**: <br>

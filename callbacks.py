@@ -31,13 +31,13 @@ class CustomCallback(object):
         
         # logging per step
         step_metrics= {
-                    'step': batch,
+                    'step': self.step,
                     "step_tr_crossentropy_loss": tr_loss_.numpy(),
                     'step_val_crossentropy_loss': val_loss.numpy()
                 }
         wandb.log(step_metrics)
         
-        print(f"step-{batch} ===== {step_metrics}")
+        print(f"step-{self.step} ===== {step_metrics}")
         
         return step_metrics
     
@@ -46,8 +46,8 @@ class CustomCallback(object):
         # logging per epoch
         epoch_metrics= {
                 'epoch': epoch,
-                "epoch_tr_crossentropy_loss": np.mean(self.tr_lss),
-                'epoch_val_crossentropy_loss': np.mean(self.val_lss)
+                "epoch_tr_crossentropy_loss": np.mean(self.tr_loss),
+                'epoch_val_crossentropy_loss': np.mean(self.val_loss)
             }
         wandb.log(epoch_metrics, commit= False)
         

@@ -1,5 +1,5 @@
 # Machine Translation System
-Built Machine Translation System using different approaches
+Built Machine Translation System using different seq2seq approaches
 
 # Goal
 - [x] [RNN based model with Luong Attention](rnn_attention.py)
@@ -15,14 +15,14 @@ Implemented the Transformer for building NMTS <br>
 <img src="assets/transformers_model.png" width="700" height="400"/> <br>
 
 # Some cool stuff
-- [x] Mixed precision (float16-float32) based training
+- [x] Mixed precision (float16-32) based training
 - [ ] Distributed training support
-- [ ] Initial embedding from pretrained models (taking eng and ger embedding from gpt2 trained on eng and ger respectively)
+- [ ] Initial input embeddings from pretrained models 
 - [ ] Final layer embedding same as initial embedding (same way as in Bert)
 
 # Running this Project
 **1) Clone this project using**: <br>
-`git clone https://github.com/VasudevGupta7/seq2seq.git`<br>
+`git clone https://github.com/VasudevGupta7/attention-nmts.git`<br>
 **2) Run this script to install all the dependencies**: <br>
 `sh script.sh`<br>
 **3) To train the model, checkout the following command**:<br>

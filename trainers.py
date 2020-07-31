@@ -21,9 +21,6 @@ class TrainerRNNAttention(Trainer):
                  decoder, 
                  config):
         
-        ckpt_dir= config['rnn_attention']['ckpt_dir']
-        super(TrainerRNNAttention, self).__init__(ckpt_dir, name= 'rnn_attention')
-        
         self.encoder= encoder
         self.decoder= decoder
     
@@ -38,6 +35,15 @@ class TrainerRNNAttention(Trainer):
         self.optimizer= mixed_precision.LossScaleOptimizer(self.optimizer, loss_scale= 'dynamic')
         
         self.sce= tf.keras.losses.SparseCategoricalCrossentropy(from_logits= True, reduction= 'none')
+                
+        ckpt_dir= config['rnn_attention']['ckpt_dir']
+        precision_policy= config['rnn_attention']['policy']
+        super(TrainerRNNAttention, self).__init__(ckpt_dir, 
+                                                 precision_policy, 
+                                                 model1= encoder,
+                                                 model2= decoder,
+                                                 optimizer= self.optimizer,
+                                                 name= 'rnn_attention')
     
     # @tf.function
     def train_step(self, enc_in, dec_in, dec_out):
@@ -81,8 +87,7 @@ class TrainerRNNAttention(Trainer):
            
         avg_timestep_loss= tot_loss/self.dec_max_len
         
-        return avg_timestep_loss
-        
+        return avg_timestep_loss  
     
     def rnn_loss(self, y, ypred):
         """
@@ -104,10 +109,7 @@ class TrainerTransformer(Trainer):
     def __init__(self, 
                  transformer, 
                  config):
-        
-        ckpt_dir= config['transformers']['ckpt_dir']
-        super(TrainerTransformer, self).__init__(ckpt_dir, name= 'transformer')
-        
+
         self.transformer= transformer
         self.config= config
         
@@ -128,6 +130,16 @@ class TrainerTransformer(Trainer):
         self.optimizer= mixed_precision.LossScaleOptimizer(self.optimizer, loss_scale= 'dynamic')
         
         self.sce= tf.keras.losses.SparseCategoricalCrossentropy(from_logits= True, reduction= 'none')
+        
+                
+        ckpt_dir= config['transformers']['ckpt_dir']
+        precision_policy= config['transformers']['policy']
+        
+        super(TrainerTransformer, self).__init__(ckpt_dir, 
+                                                 precision_policy, 
+                                                 model1= transformer,
+                                                 optimizer= self.optimizer
+                                                 name= 'transformer')
     
     # @tf.function
     def train_step(self, enc_in, dec_in, dec_out):       

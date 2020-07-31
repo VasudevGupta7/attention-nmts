@@ -6,6 +6,7 @@ rnn_attention:
     optimizer: 'rmsprop'
     epochs: 2
     ckpt_dir: 'weights/rnn_attention_ckpts'
+    policy: 'mixed_float16'
     
     embed_size: 100
     gru_units: 64
@@ -17,6 +18,7 @@ transformer:
     learning_rate: 'schedule' # either 'schedule' or some constant
     epochs: 2
     ckpt_dir: 'weights/transformers_ckpts'
+    policy: 'mixed_float16'
     
     k: 5 # beam width
     num_blocks: 2

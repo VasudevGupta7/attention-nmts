@@ -55,6 +55,15 @@ class Encoder(tf.keras.Model):
         # output_seq2 shape= (batch_size, max_length_encoder_input, gru_units)
         
         return output_seq2, hidden1, hidden2
+    
+    def get_config(self):
+        config= super(Encoder, self).get_config()
+        config.update({
+            'eng_vocab': self.eng_vocab,
+            'embed_size': self.embed_size,
+            'gru_units': self.gru_units
+            })
+        return config
 
 class LuongAttention(tf.keras.layers.Layer):
     """
@@ -91,6 +100,14 @@ class LuongAttention(tf.keras.layers.Layer):
         # context_vector- (batch_size, gru_units)
         
         return context_vector, attention_weights
+    
+    def get_config(self):
+        config= super(LuongAttention, self).get_config()
+        config.update({
+            'gru_units': self.gru_units
+            })
+        return config
+
 
 class Decoder(tf.keras.Model):
     """
@@ -151,3 +168,12 @@ class Decoder(tf.keras.Model):
         # y- (batch_size, 1, ger_vocab)
         
         return y, hidden1, hidden2, attention_weights
+
+    def get_config(self):
+        config= super(Decoder, self).get_config()
+        config.update({
+            'ger_vocab': self.ger_vocab,
+            'embed_size': self.embed_size,
+            'gru_units': self.gru_units
+            })
+        return config

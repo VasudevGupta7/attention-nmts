@@ -16,7 +16,7 @@ class Trainer(object):
     
     def __init__(self, 
                  ckpt_dir, 
-                 precision_policy= 'mixed_float16',
+                 precision_policy= 'float32',
                  **kwargs):
         
         self.policy= mixed_precision.Policy(precision_policy)
@@ -45,6 +45,7 @@ class Trainer(object):
     def train(self, 
               tr_dataset, 
               val_dataset, 
+              strategy,
               epochs= 2, 
               restore_ckpt= False, 
               save_final_ckpt= False, 
@@ -58,8 +59,8 @@ class Trainer(object):
             
             for enc_in, dec_in, dec_out in tr_dataset:
               
-                tr_loss= self.train_step(enc_in, dec_in, dec_out)
-                val_loss= self.evaluate(val_dataset)
+                tr_loss= self.distributed_train_step(enc_in, dec_in, dec_out, strategy)
+                val_loss= evaluate(val_dataset)
                 
                 step_metrics= self.callbacks.on_batch_end(tr_loss, val_loss)
             
@@ -78,44 +79,27 @@ class Trainer(object):
         
         for enc_in, dec_in, dec_out in val_dataset:
             
-            loss= self.test_step(enc_in, dec_in, dec_out)
+            loss= self.distributed_test_step(enc_in, dec_in, dec_out, strategy)
             loss_ += loss
             steps += 1
             
         return loss_/steps
     
-    # def distributed_train(self, 
-    #                       strategy,
-    #                       tr_dataset, 
-    #                       val_dataset, 
-    #                       epochs= 2, 
-    #                       restore_ckpt= False, 
-    #                       save_final_ckpt= False, 
-    #                       save_evry_ckpt= False):
+    # @tf.function
+    def distributed_train_step(self, enc_in, dec_in, dec_out, strategy):
         
-    #     self.strategy= strategy
-    #     self.num_replicas= self.batch_size / self.strategy.num_replicas_in_sync
+        per_replica_loss, _= strategy.run(self.train_step,
+                                          args= (enc_in, dec_in, dec_out))
         
-    #     # enc_input, dec_input, dec_output === tr_dataset
-    #     if restore_ckpt: self.restore(self.ckpt_dir, assert_consumed=True)
+        return strategy.reduce(tf.distribute.ReduceOp.SUM, per_replica_loss, axis= None)
+    
+    # @tf.function
+    def distributed_test_step(self, enc_in, dec_in, dec_out, strategy):
         
-    #     for epoch in range(1, 1+epochs):
-    #         self.callbacks.on_epoch_begin(epoch)
-            
-    #         for enc_in, dec_in, dec_out in tr_dataset:
-              
-    #             per_replica_loss, _= self.strategy.run(self.train_step,
-    #                                             args= (enc_in, dec_in, dec_out))
-                
-    #             step_metrics= self.callbacks.on_batch_end(tr_loss, val_loss)
-                
-    #         if save_evry_ckpt: self.manager.save()
-            
-    #     epoch_metrics= self.callbacks.on_epoch_end(epoch)
+        per_replica_loss, _= strategy.run(self.test_step,
+                                          args= (enc_in, dec_in, dec_out))
         
-    #     if save_final_ckpt: self.manager.save()
-        
-    #     return epoch_metrics
+        return strategy.reduce(tf.distribute.ReduceOp.SUM, per_replica_loss, axis= None)
     
 def get_args():
     
